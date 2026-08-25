@@ -212,6 +212,8 @@ class PPOTrainer(ABC):
         consumed_samples = consumed_samples % (num_rollouts_per_episodes * args.rollout_batch_size)
 
         for episode in range(start_episode, args.num_episodes):
+            if args.max_rollout_steps is not None and steps > args.max_rollout_steps:
+                break
             if isinstance(self.prompts_dataloader.sampler, DistributedSampler):
                 self.prompts_dataloader.sampler.set_epoch(
                     episode, consumed_samples=0 if episode > start_episode else consumed_samples
@@ -222,7 +224,11 @@ class PPOTrainer(ABC):
                 disable=not self.strategy.is_rank_0(),
             )
             total_steps = args.num_episodes * len(self.prompts_dataloader)
+            if args.max_rollout_steps is not None:
+                total_steps = min(total_steps, args.max_rollout_steps)
             for rand_prompts in self.prompts_dataloader:
+                if args.max_rollout_steps is not None and steps > args.max_rollout_steps:
+                    break
                 for i, experience in enumerate(
                     self.experience_maker.make_experience_list(rand_prompts, steps, total_steps, **self.generate_kwargs)
                 ):
@@ -249,6 +255,7 @@ class PPOTrainer(ABC):
 
                 pbar.update()
                 steps = steps + 1
+            pbar.close()
 
         if self._wandb is not None and self.strategy.is_rank_0():
             self._wandb.finish()
@@ -498,7 +505,8 @@ class PPOTrainer(ABC):
             pass
         # save ckpt
         # TODO: save best model on dev, use loss/perplexity/others on whole dev dataset as metric
-        if global_step % args.save_steps == 0:
+        is_last_capped_step = args.max_rollout_steps is not None and global_step == args.max_rollout_steps
+        if global_step % args.save_steps == 0 or is_last_capped_step:
             tag = f"global_step{global_step}"
             self._save_checkpoint(args, tag, client_states)
 

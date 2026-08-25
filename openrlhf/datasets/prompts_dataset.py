@@ -1,22 +1,24 @@
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from utils import DATASET_KEYS, RESPONSE_COMPARATOR, RESPONSE_EXTRACTOR
+from utils import DATASET_KEYS
+
 
 def preprocess_data(data, input_template=None, apply_chat_template=None, system_prompt=None) -> str:
     dataset_name = data.get("dataset_name", None)
     input_key = DATASET_KEYS[dataset_name]["question"]
+    prompt = data[input_key]
+
+    if isinstance(prompt, str) and input_template:
+        prompt = input_template.format(prompt)
+
     if apply_chat_template:
-        chat = data[input_key]
+        chat = prompt
         if isinstance(chat, str):
-            chat = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": chat}
-            ]
+            chat = []
+            if system_prompt is not None:
+                chat.append({"role": "system", "content": system_prompt})
+            chat.append({"role": "user", "content": prompt})
         prompt = apply_chat_template(chat, tokenize=False, add_generation_prompt=True)
-    else:
-        prompt = data[input_key]
-        if input_template:
-            prompt = input_template.format(prompt)
     return prompt, data
 
 

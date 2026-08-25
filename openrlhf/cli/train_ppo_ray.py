@@ -259,6 +259,12 @@ if __name__ == "__main__":
     # PPO
     parser.add_argument("--save_path", type=str, default="./ckpt")
     parser.add_argument("--num_episodes", type=int, default=1)
+    parser.add_argument(
+        "--max_rollout_steps",
+        type=int,
+        default=None,
+        help="Stop cleanly after this many outer rollout/update steps across episodes.",
+    )
     parser.add_argument("--rollout_batch_size", type=int, default=1024)
     parser.add_argument("--micro_rollout_batch_size", type=int, default=8)
     parser.add_argument("--max_epochs", type=int, default=1)
@@ -363,6 +369,9 @@ if __name__ == "__main__":
     parser.add_argument("--perf", action="store_true", default=False)
 
     args = parser.parse_args()
+
+    if args.max_rollout_steps is not None and args.max_rollout_steps <= 0:
+        parser.error("--max_rollout_steps must be a positive integer")
 
     if args.advantage_estimator not in ["gae"]:
         args.critic_pretrain = None

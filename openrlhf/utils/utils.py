@@ -38,6 +38,19 @@ def get_strategy(args):
     return strategy
 
 
+def _filter_empty_math12k_rows(data, dataset_name, split_name, strategy):
+    """Match MaxRL's Math12K preprocessing by dropping incomplete rows."""
+    if dataset_name != "hiyouga/math12k":
+        return data
+
+    original_size = len(data)
+    data = data.filter(lambda row: bool(str(row["problem"]).strip() and str(row["answer"]).strip()))
+    skipped = original_size - len(data)
+    if skipped:
+        strategy.print(f"Skipping {skipped} {split_name} rows with an empty problem or answer")
+    return data
+
+
 def blending_datasets(
     datasets,
     probabilities,
@@ -83,25 +96,27 @@ def blending_datasets(
             strategy.print(f"loaded {dataset} from disk")
         # remote/local folder or common file
         else:
-            if dataset == 'openai/gsm8k':
-                data = load_dataset(dataset, 'main')
-            elif dataset == 'hendrycks/competition_math':
+            if dataset == "openai/gsm8k":
+                data = load_dataset(dataset, "main")
+            elif dataset == "hendrycks/competition_math":
                 data = load_dataset(dataset)
             else:
                 data = load_dataset(dataset, data_dir=data_dir)
             strategy.print(f"loaded {dataset} from files")
 
         if train_split and train_split in data:
-            train_data = data[train_split].select(range(min(max_count, len(data[train_split]))))
+            train_source = _filter_empty_math12k_rows(data[train_split], dataset, train_split, strategy)
         else:
-            train_data = data.select(range(min(max_count, len(data))))
+            train_source = _filter_empty_math12k_rows(data, dataset, train_split or "train", strategy)
+        train_data = train_source.select(range(min(max_count, len(train_source))))
         # Add dataset_name column to choose appropriate keys
-        train_data = train_data.add_column('dataset_name', [dataset] * len(train_data))
+        train_data = train_data.add_column("dataset_name", [dataset] * len(train_data))
         train_data_list.append(train_data)
 
         if return_eval:
             if eval_split and eval_split in data:
-                eval_data = data[eval_split].select(range(min(max_count, len(data[eval_split]))))
+                eval_source = _filter_empty_math12k_rows(data[eval_split], dataset, eval_split, strategy)
+                eval_data = eval_source.select(range(min(max_count, len(eval_source))))
             # train will contains eval? TODO
             else:
                 eval_data = train_data.select(range(min(max_count, int(len(train_data) * 0.03))))
@@ -117,9 +132,7 @@ def blending_datasets(
     #     seed=seed,
     #     stopping_strategy=stopping_strategy,
     # )
-    train_dataset = concatenate_datasets(
-        train_data_list
-    )
+    train_dataset = concatenate_datasets(train_data_list)
     train_dataset = train_dataset.shuffle(seed=42)
     if return_eval:
         eval_dataset = interleave_datasets(

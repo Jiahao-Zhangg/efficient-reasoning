@@ -232,6 +232,14 @@ class ActorModelRayActor(BasePPORole):
             len(self.prompts_dataset) * args.n_samples_per_prompt // args.train_batch_size * args.max_epochs
         )
         max_steps = math.ceil(args.num_episodes * self.num_update_steps_per_episodes)
+        if args.max_rollout_steps is not None:
+            updates_per_rollout = (
+                args.rollout_batch_size
+                * args.n_samples_per_prompt
+                * args.max_epochs
+                / args.train_batch_size
+            )
+            max_steps = min(max_steps, math.ceil(args.max_rollout_steps * updates_per_rollout))
         self._max_steps = max_steps
         
         if args.scheduler_type == 'cosine':
