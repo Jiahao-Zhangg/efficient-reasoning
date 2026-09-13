@@ -10,6 +10,11 @@ Trained checkpoints can be found at this [link](https://huggingface.co/collectio
 
 ## Installation
 
+To reproduce the local Qwen3/DeepSeek ER environment, use the
+[pinned Conda and pip snapshot](environments/efficient_reasoning/README.md).
+It includes exact package versions, cross-machine restore instructions, and a
+verification command. The original paper's installation instructions follow.
+
 ```
 conda create -n efficient_reasoning python=3.10.15
 conda activate efficient_reasoning
