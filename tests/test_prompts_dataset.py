@@ -38,3 +38,17 @@ def test_chat_template_includes_explicit_system_prompt():
         {"role": "system", "content": "You are a math tutor."},
         {"role": "user", "content": "What is 2 + 2?"},
     ]
+
+
+def test_compression_prompt_preserves_sample_gold_without_showing_it_to_model():
+    data = {
+        "dataset_name": "datasets/compression_dataset",
+        "problem": "How much is 2 + 2?",
+        "solution": "A worked solution ending in 4",
+        "extracted": "4",
+    }
+    prompt, aux_info = preprocess_data(data, input_template="Question: {}")
+
+    assert prompt == "Question: How much is 2 + 2?"
+    assert aux_info is data
+    assert aux_info["extracted"] == "4"

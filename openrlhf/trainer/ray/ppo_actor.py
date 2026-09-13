@@ -410,6 +410,9 @@ class ActorModelRayActor(BasePPORole):
         if args.load_checkpoint and os.path.exists(ckpt_path) and not vllm_engines is None:
             torch.distributed.barrier()
             trainer._broadcast_to_vllm()
+            # Nonzero ranks must not generate while rank 0 is still broadcasting weights.
+            torch.distributed.barrier()
+            strategy.print("Checkpoint weights synchronized to all vLLM engines before generation.")
 
         trainer.fit(
             args,

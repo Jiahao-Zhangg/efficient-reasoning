@@ -53,6 +53,21 @@ def sigmoid(x):
     return 1 / (1 + np.exp(-x))
 
 
+def _reference_for_sample(dataset_name, aux_info):
+    """Use each compression row's extracted gold, not a question-text lookup."""
+    if dataset_name == "datasets/compression_dataset":
+        answer_key = DATASET_KEYS[dataset_name]["answer"]
+        answer = aux_info.get(answer_key)
+        if answer is None or not str(answer).strip():
+            raise ValueError(f"Each {dataset_name} sample must include a non-empty {answer_key} gold answer")
+    else:
+        question = aux_info[DATASET_KEYS[dataset_name]["question"]]
+        answer = app.config["dataset_dict"][dataset_name].get(question)
+        if answer is None:
+            raise KeyError(f"No answer found for question in {dataset_name}: {question[:120]}")
+    return REFERENCE_EXTRACTOR[dataset_name](answer)
+
+
 def _response_info(response, tokenizer):
     """Return decoded-token length and whether the response contains EOS."""
     token_ids = tokenizer.encode(response, add_special_tokens=False)
@@ -113,10 +128,7 @@ def query():
 
             question_key = DATASET_KEYS[dataset_name]["question"]
             question = aux_info[question_key]
-            answer = app.config["dataset_dict"][dataset_name].get(question)
-            if answer is None:
-                raise KeyError(f"No answer found for question in {dataset_name}: {question[:120]}")
-            reference = REFERENCE_EXTRACTOR[dataset_name](answer)
+            reference = _reference_for_sample(dataset_name, aux_info)
 
             response = query_item.get("response")
             if response is None:
@@ -126,6 +138,7 @@ def query():
                 {
                     "dataset_name": dataset_name,
                     "question": question,
+                    "reference": reference,
                     "response": response,
                     "all_responses": all_responses,
                 }
@@ -135,7 +148,7 @@ def query():
                 if candidate_response not in response_info:
                     response_info[candidate_response] = _response_info(candidate_response, tokenizer)
 
-                cache_key = (dataset_name, question, candidate_response)
+                cache_key = (dataset_name, question, reference, candidate_response)
                 _, contains_eos = response_info[candidate_response]
                 if app.config["check_eos"] and not contains_eos:
                     accuracy_by_key[cache_key] = 0.0
@@ -149,7 +162,7 @@ def query():
         correct_lengths = {}
         visited_groups = set()
         for context in contexts:
-            group_key = (context["dataset_name"], context["question"])
+            group_key = (context["dataset_name"], context["question"], context["reference"])
             if group_key in visited_groups:
                 continue
             visited_groups.add(group_key)
@@ -163,7 +176,7 @@ def query():
 
         for context in contexts:
             dataset_name = context["dataset_name"]
-            group_key = (dataset_name, context["question"])
+            group_key = (dataset_name, context["question"], context["reference"])
             response = context["response"]
             response_len = response_info[response][0]
             accuracy = accuracy_by_key[(*group_key, response)]

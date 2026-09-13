@@ -1,7 +1,7 @@
 import pytest
 
-from reward_server.math_server import app
-from utils import REFERENCE_EXTRACTOR
+from reward_server.math_server import _reference_for_sample, app
+from utils import DATASET_KEYS, REFERENCE_EXTRACTOR
 from utils.math_verifier import verify_math_answer
 
 
@@ -44,6 +44,64 @@ def test_verify_math_answer_rejects_wrong_and_empty_answers():
 def test_math12k_reference_is_not_reduced_to_last_number():
     reference = r"\frac{7}{20}"
     assert REFERENCE_EXTRACTOR["hiyouga/math12k"](reference) == reference
+
+
+@pytest.mark.parametrize("reference", ["0", "168089", r"\frac{7}{20}", "32x - 46", r"\text{(C)}"])
+def test_compression_reference_uses_extracted_without_reparsing(reference):
+    dataset_name = "datasets/compression_dataset"
+    assert DATASET_KEYS[dataset_name]["answer"] == "extracted"
+    assert REFERENCE_EXTRACTOR[dataset_name](reference) == reference
+    assert _reference_for_sample(
+        dataset_name,
+        {"problem": "question", "extracted": reference, "solution": r"Wrong solution: \boxed{99}"},
+    ) == reference
+
+
+@pytest.mark.parametrize("aux_info", [{}, {"extracted": None}, {"extracted": ""}, {"extracted": "  "}])
+def test_compression_reference_requires_sample_gold(aux_info):
+    with pytest.raises(ValueError, match="non-empty extracted"):
+        _reference_for_sample("datasets/compression_dataset", {"problem": "question", **aux_info})
+
+
+def test_reward_server_keeps_duplicate_questions_with_different_gold_separate(monkeypatch):
+    dataset_name = "datasets/compression_dataset"
+    question = "A duplicated question with conflicting stored answers"
+    responses = [r"\boxed{2}<eos>", r"A longer response: \boxed{3}<eos>"]
+    config = {
+        "TESTING": True,
+        "dataset_names": [dataset_name],
+        # No question lookup is available: gold must come from each sample.
+        "dataset_dict": {},
+        "tokenizer": FakeTokenizer(),
+        "reward_type": "sigmoid",
+        "alpha": 0.1,
+        "check_eos": True,
+        "verifier_pool": None,
+    }
+    for key, value in config.items():
+        monkeypatch.setitem(app.config, key, value)
+    payload = {
+        "query": [
+            {
+                "response": response,
+                "aux_info": {
+                    "dataset_name": dataset_name,
+                    "problem": question,
+                    "extracted": gold,
+                    "solution": r"Do not use this: \boxed{99}",
+                    "all_responses": responses,
+                },
+            }
+            for gold in ["2", "3"]
+            for response in responses
+        ]
+    }
+
+    response = app.test_client().post("/query", json=payload)
+    assert response.status_code == 200
+    metrics = response.get_json()
+    assert metrics[f"{dataset_name}_accuracy"] == [1.0, 0.0, 0.0, 1.0]
+    assert metrics["rewards"] == pytest.approx([0.95, 0.0, 0.0, 0.95])
 
 
 def test_reward_server_verifies_bare_math12k_gold():

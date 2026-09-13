@@ -6,7 +6,7 @@ DATASET_KEYS = {
     "hendrycks/competition_math": {"question": "problem", "answer": "solution"},
     "datasets/converted_aime_dataset": {"question": "problem", "answer": "solution"},
     "di-zhang-fdu/MATH500": {"question": "problem", "answer": "solution"},
-    "datasets/compression_dataset": {"question": "problem", "answer": "solution"},
+    "datasets/compression_dataset": {"question": "problem", "answer": "extracted"},
     "hiyouga/math12k": {"question": "problem", "answer": "answer"},
 }
 
@@ -19,14 +19,14 @@ RESPONSE_EXTRACTOR = {
     "hiyouga/math12k": lambda x: extract_answer(x, data_name="math"),
 }
 
-# Existing datasets store worked solutions, so extract their final answer before
-# passing it to Math-Verify. Math12K already stores a bare answer and must not use
+# Extract final answers only for datasets storing worked solutions. Math12K and
+# compression_dataset already provide bare answers; do not reparse those with
 # extract_answer's last-number fallback.
 REFERENCE_EXTRACTOR = {
     "openai/gsm8k": lambda x: extract_answer(x, data_name="gsm8k"),
     "hendrycks/competition_math": lambda x: extract_answer(x, data_name="math"),
     "di-zhang-fdu/MATH500": lambda x: extract_answer(x, data_name="math"),
-    "datasets/compression_dataset": lambda x: extract_answer(x, data_name="math"),
+    "datasets/compression_dataset": lambda x: str(x).strip(),
     "datasets/converted_aime_dataset": lambda x: extract_answer(x, data_name="math"),
     "hiyouga/math12k": lambda x: str(x).strip(),
 }
